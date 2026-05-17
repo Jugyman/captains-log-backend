@@ -1,0 +1,51 @@
+{
+  "station": "Pi1 Wales",
+  "stationId": "pi1-wales",
+  "captainDiscordId": "1234567890",
+  "fleet": "Atlantic Fleet",
+  "date": "2026-05-17",
+  "source": "docker:type5-only",
+  "completedType5Messages": 3,
+  "uniqueType5Ships": 2,
+  "strongestSignal": -5.84,
+  "weakestSignal": -23.1,
+  "ships": [
+    {
+      "mmsi": "232123456",
+      "decodedMmsi": 232123456,
+      "name": "FEDERAL SETO",
+      "callsign": "ABCD",
+      "imo": 9876543,
+      "shipType": 70,
+      "shipTypeLabel": "Cargo",
+      "flagMid": "232",
+      "flagCountry": "United Kingdom",
+      "lengthM": 180,
+      "widthM": 28,
+      "draughtM": 8.4,
+      "destination": "CARDIFF",
+      "eta": "05-18 12:30",
+      "signalpower": -5.84,
+      "timestamp": "1779030000"
+    },
+    {
+      "mmsi": "235777777",
+      "decodedMmsi": 235777777,
+      "name": "ARKLOW RAIDER",
+      "callsign": "EFGH",
+      "imo": 9123456,
+      "shipType": 70,
+      "shipTypeLabel": "Cargo",
+      "flagMid": "235",
+      "flagCountry": "United Kingdom",
+      "lengthM": 90,
+      "widthM": 14,
+      "draughtM": 4.1,
+      "destination": "SWANSEA",
+      "eta": "05-18 08:00",
+      "signalpower": -12.2,
+      "timestamp": "1779030200"
+    }
+  ],
+  "points": 203
+}
