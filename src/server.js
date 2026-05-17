@@ -170,6 +170,102 @@ app.post("/reports/upload", requireApiKey, async (req, res) => {
   res.json({ ok: true, xp: scoring.xp, scoring: scoring.breakdown, newShips: scoring.newShips, newDestinations: scoring.newDestinations, discord });
 });
 
+
+app.get("/reports", async (req, res) => {
+  const { reports } = await loadState();
+  const limit = Math.min(Number(req.query.limit || 50), 200);
+
+  const rows = [...reports]
+    .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))
+    .slice(0, limit)
+    .map((r) => ({
+      uploadedAt: r.uploadedAt,
+      date: r.date,
+      station: r.station,
+      stationId: r.stationId,
+      fleet: r.fleet,
+      xp: r.xp,
+      scoring: r.scoring,
+      uniqueShips: r.report?.uniqueType5Ships || r.report?.ships?.length || 0,
+      source: r.source,
+    }));
+
+  res.json({ ok: true, count: rows.length, reports: rows });
+});
+
+app.get("/leaderboard", async (_req, res) => {
+  const { fleets, stations, reports } = await loadState();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const dailyStations = reports
+    .filter((r) => r.date === today)
+    .map((r) => ({
+      station: r.station,
+      stationId: r.stationId,
+      fleet: r.fleet,
+      xp: r.xp,
+    }))
+    .sort((a, b) => Number(b.xp || 0) - Number(a.xp || 0));
+
+  const dailyFleets = fleets
+    .map((f) => ({
+      name: f.name,
+      xp: Number(f.dailyXp?.[today] || 0),
+      allTimeXp: Number(f.allTimeXp || 0),
+    }))
+    .sort((a, b) => Number(b.xp || 0) - Number(a.xp || 0));
+
+  res.json({
+    ok: true,
+    today,
+    fleets: [...fleets].sort((a, b) => Number(b.allTimeXp || 0) - Number(a.allTimeXp || 0)),
+    stations: [...stations].sort((a, b) => Number(b.allTimeXp || 0) - Number(a.allTimeXp || 0)),
+    daily: {
+      fleets: dailyFleets,
+      stations: dailyStations,
+    },
+    bottomThree: getBottomThreeFleetNames(fleets),
+  });
+});
+
+app.get("/records", async (_req, res) => {
+  const { reports } = await loadState();
+
+  const ships = reports.flatMap((r) =>
+    (r.report?.ships || []).map((ship) => ({
+      ...ship,
+      station: r.station,
+      stationId: r.stationId,
+      fleet: r.fleet,
+      date: r.date,
+      uploadedAt: r.uploadedAt,
+    }))
+  );
+
+  const withNumber = (field) =>
+    ships.filter((s) => Number.isFinite(Number(s[field])) && Number(s[field]) > 0);
+
+  const maxBy = (field) =>
+    withNumber(field).sort((a, b) => Number(b[field]) - Number(a[field]))[0] || null;
+
+  const minBy = (field) =>
+    withNumber(field).sort((a, b) => Number(a[field]) - Number(b[field]))[0] || null;
+
+  res.json({
+    ok: true,
+    totalReports: reports.length,
+    totalShips: ships.length,
+    records: {
+      biggestShip: maxBy("lengthM"),
+      smallestShip: minBy("lengthM"),
+      deepestDraught: maxBy("draughtM"),
+      shallowestDraught: minBy("draughtM"),
+      strongestSignal: maxBy("signalpower"),
+      weakestSignal: minBy("signalpower"),
+    },
+  });
+});
+
 app.get("/leaderboard/daily/:date", async (req, res) => {
   const { reports, fleets } = await loadState();
   const date = req.params.date;
