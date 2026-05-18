@@ -9,6 +9,7 @@ INSTALL_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
 APP_DIR="$INSTALL_HOME/captains-log"
 CONFIG_DIR="/etc/captains-log"
 CONFIG_FILE="$CONFIG_DIR/captains-log.env"
+PUBLIC_UPLOAD_KEY="${CAPTAINS_LOG_PUBLIC_UPLOAD_KEY:-captainslog_pi_upload_2026}"
 RUNNER="/usr/local/bin/captains-log-upload"
 SERVICE_FILE="/etc/systemd/system/captains-log-upload.service"
 TIMER_FILE="/etc/systemd/system/captains-log-upload.timer"
@@ -117,7 +118,7 @@ main() {
   echo ""
 
   STATION_NAME="$(prompt_required "Station name, e.g. Pi1 Wales")"
-  API_KEY="$(prompt_required "Captain's Log API key")"
+  API_KEY="$PUBLIC_UPLOAD_KEY"
   FLEET="$(choose_fleet)"
 
   echo ""
@@ -154,7 +155,7 @@ main() {
   sudo tee "$CONFIG_FILE" >/dev/null <<EOF
 CAPTAINS_LOG_BACKEND_URL="$BACKEND_URL"
 CAPTAINS_LOG_UPLOAD_URL="$UPLOAD_URL"
-CAPTAINS_LOG_API_KEY="$(quote_env "$API_KEY")"
+CAPTAINS_LOG_API_KEY="$(quote_env "$PUBLIC_UPLOAD_KEY")"
 CAPTAINS_LOG_STATION="$(quote_env "$STATION_NAME")"
 CAPTAINS_LOG_STATION_ID="$(quote_env "$STATION_ID")"
 CAPTAINS_LOG_FLEET="$(quote_env "$FLEET")"
@@ -164,31 +165,31 @@ CAPTAINS_LOG_SERVICE="mastradar.service"
 CAPTAINS_LOG_TAIL="5000"
 CAPTAINS_LOG_SINCE="24 hours ago"
 EOF
-  sudo chmod 600 "$CONFIG_FILE"
+  sudo chmod 644 "$CONFIG_FILE"
 
-  sudo tee "$RUNNER" >/dev/null <<'EOF'
+  sudo tee "$RUNNER" >/dev/null <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 source /etc/captains-log/captains-log.env
-cd /home/${SUDO_USER:-pi}/captains-log 2>/dev/null || cd ~/captains-log
+cd "$APP_DIR"
 
 ARGS=(
   python3 ./captains_log.py
-  --station "$CAPTAINS_LOG_STATION"
-  --station-id "$CAPTAINS_LOG_STATION_ID"
-  --fleet "$CAPTAINS_LOG_FLEET"
+  --station "\$CAPTAINS_LOG_STATION"
+  --station-id "\$CAPTAINS_LOG_STATION_ID"
+  --fleet "\$CAPTAINS_LOG_FLEET"
   --upload
-  --upload-url "$CAPTAINS_LOG_UPLOAD_URL"
-  --api-key "$CAPTAINS_LOG_API_KEY"
+  --upload-url "\$CAPTAINS_LOG_UPLOAD_URL"
+  --api-key "\$CAPTAINS_LOG_API_KEY"
 )
 
-if [ "$CAPTAINS_LOG_SOURCE" = "journal" ]; then
-  ARGS+=(--source journal --service "$CAPTAINS_LOG_SERVICE" --since "$CAPTAINS_LOG_SINCE")
+if [ "\$CAPTAINS_LOG_SOURCE" = "journal" ]; then
+  ARGS+=(--source journal --service "\$CAPTAINS_LOG_SERVICE" --since "\$CAPTAINS_LOG_SINCE")
 else
-  ARGS+=(--source docker --container "$CAPTAINS_LOG_CONTAINER" --tail "$CAPTAINS_LOG_TAIL")
+  ARGS+=(--source docker --container "\$CAPTAINS_LOG_CONTAINER" --tail "\$CAPTAINS_LOG_TAIL")
 fi
 
-exec "${ARGS[@]}"
+exec "\${ARGS[@]}"
 EOF
   sudo chmod +x "$RUNNER"
 
