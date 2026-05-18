@@ -291,6 +291,52 @@ app.get("/leaderboard/all-time", async (_req, res) => {
   });
 });
 
+
+function buildFleetScoreboardMessage({ fleets, reports }) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const fleetRows = [...fleets]
+    .map((f) => ({
+      name: f.name,
+      xp: Number(f.dailyXp?.[today] || 0),
+      allTimeXp: Number(f.allTimeXp || 0),
+    }))
+    .sort((a, b) => b.xp - a.xp);
+
+  const stationRows = [...reports]
+    .filter((r) => r.date === today)
+    .map((r) => ({
+      station: r.station,
+      fleet: r.fleet || "No Fleet",
+      xp: Number(r.xp || 0),
+    }))
+    .sort((a, b) => b.xp - a.xp)
+    .slice(0, 5);
+
+  return {
+    content: [
+      `🏆 **Captain’s Log — Fleet Scoreboard**`,
+      `📅 ${today}`,
+      "",
+      "**Fleet standings today:**",
+      ...fleetRows.map((f, i) => `${i + 1}. **${f.name}** — ${f.xp} XP`),
+      "",
+      stationRows.length
+        ? `**Top stations today:**\n${stationRows.map((s, i) => `${i + 1}. ${s.station} — ${s.xp} XP (${s.fleet})`).join("\n")}`
+        : "**Top stations today:**\nNo station logs yet.",
+      "",
+      `🔻 **Bottom 3 open for new stations:**\n${getBottomThreeFleetNames(fleets).map((n) => `• ${n}`).join("\n")}`,
+    ].join("\n"),
+  };
+}
+
+app.post("/admin/post-fleet-scoreboard", requireApiKey, async (_req, res) => {
+  const { fleets, reports } = await loadState();
+  const message = buildFleetScoreboardMessage({ fleets, reports });
+  const discord = await postToDiscord(DISCORD_WEBHOOK_URL, message);
+  res.json({ ok: true, discord });
+});
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ ok: false, error: err.message || "Server error" });
