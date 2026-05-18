@@ -230,7 +230,7 @@ app.get("/leaderboard", async (_req, res) => {
 
 
 app.get("/install.sh", (req, res) => {
-  const installPath = path.join(__dirname, "install.sh");
+  const installPath = path.join(__diprocess.cwd(), "install.sh");
 
   if (!fs.existsSync(installPath)) {
     return res.status(404).send("install.sh not found");
