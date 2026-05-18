@@ -15,6 +15,7 @@ import {
   getBottomThreeFleetNames,
   updateGlobalSeen,
 } from "./scoring.js";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
