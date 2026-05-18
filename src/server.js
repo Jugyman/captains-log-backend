@@ -228,8 +228,6 @@ app.get("/leaderboard", async (_req, res) => {
   });
 });
 
-const fs = require("fs");
-const path = require("path");
 
 app.get("/install.sh", (req, res) => {
   const installPath = path.join(__dirname, "install.sh");
