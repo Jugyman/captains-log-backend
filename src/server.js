@@ -241,6 +241,17 @@ app.get("/install.sh", (req, res) => {
   fs.createReadStream(installPath).pipe(res);
 });
 
+app.get("/captains_log.py", (req, res) => {
+  const scriptPath = path.join(process.cwd(), "captains_log.py");
+
+  if (!fs.existsSync(scriptPath)) {
+    return res.status(404).send("captains_log.py not found");
+  }
+
+  res.setHeader("Content-Type", "text/plain");
+  fs.createReadStream(scriptPath).pipe(res);
+});
+
 app.get("/records", async (_req, res) => {
   const { reports } = await loadState();
 
