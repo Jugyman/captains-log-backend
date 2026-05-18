@@ -63,17 +63,22 @@ PY
 
 choose_fleet() {
   mapfile -t fleets < <(fetch_fleet_options || true)
+
   if [ "${#fleets[@]}" -gt 0 ]; then
-    echo ""
-    echo "Available fleets from backend:"
+    echo "" >&2
+    echo "Choose your Fleet:" >&2
+    echo "New stations should choose one of the open fleets shown below." >&2
+    echo "" >&2
+
     local i=1
     for f in "${fleets[@]}"; do
-      echo "  $i) $f"
+      echo "  $i) $f" >&2
       i=$((i+1))
     done
-    echo "  M) Type manually"
+    echo "  M) Type manually" >&2
+
     while true; do
-      read -r -p "Choose fleet number: " choice
+      read -r -p "Choose fleet number: " choice >&2
       if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#fleets[@]}" ]; then
         printf '%s' "${fleets[$((choice-1))]}"
         return
@@ -82,10 +87,10 @@ choose_fleet() {
         prompt_required "Fleet name"
         return
       fi
-      echo "Invalid choice."
+      echo "Invalid choice. Choose a number from the list." >&2
     done
   else
-    echo "Could not fetch fleet list. Type fleet manually."
+    echo "Could not fetch fleet list. Type fleet manually." >&2
     prompt_required "Fleet name"
   fi
 }
