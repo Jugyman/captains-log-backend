@@ -10,7 +10,6 @@ import fs from "fs";
 import { buildDiscordMessage, postToDiscord } from "./discord.js";
 import { dataFiles, ensureDir, readJson, writeJson } from "./storage.js";
 import {
-  applyFleetXp,
   calculateLocalXp,
   canJoinFleet,
   defaultFleets,
@@ -28,6 +27,9 @@ const API_KEY = process.env.CAPTAINS_LOG_API_KEY || "change_me_station_upload_ke
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || "";
 const POST_TO_DISCORD =
   String(process.env.POST_TO_DISCORD || "true").toLowerCase() === "true";
+
+const INSTALL_COMMAND =
+  "curl -sSL https://captains-log-backend-production.up.railway.app/install.sh | bash";
 
 const files = dataFiles(DATA_DIR);
 const app = express();
@@ -58,6 +60,128 @@ function requiredString(value) {
 
 function reportKey(report) {
   return `${report.stationId || report.station}|${report.date}`;
+}
+
+function formatXp(value) {
+  return Number(value || 0).toLocaleString("en-GB");
+}
+
+function medal(index) {
+  if (index === 0) return "🥇";
+  if (index === 1) return "🥈";
+  if (index === 2) return "🥉";
+  return `${index + 1}.`;
+}
+
+function safeShipName(ship) {
+  return ship?.name || `MMSI ${ship?.mmsi || ship?.decodedMmsi || "unknown"}`;
+}
+
+function shipTypeLabel(ship) {
+  return ship?.shipTypeLabel || `Type ${ship?.shipType || "?"}`;
+}
+
+function allShipsFromReports(reports) {
+  return reports.flatMap((r) =>
+    (r.report?.ships || []).map((ship) => ({
+      ...ship,
+      station: r.station,
+      stationId: r.stationId,
+      fleet: r.fleet,
+      date: r.date,
+      uploadedAt: r.uploadedAt,
+      xp: r.xp,
+    }))
+  );
+}
+
+function largestShipFromReports(reports) {
+  return (
+    allShipsFromReports(reports)
+      .filter((s) => Number(s.lengthM || 0) > 0)
+      .sort((a, b) => Number(b.lengthM || 0) - Number(a.lengthM || 0))[0] ||
+    null
+  );
+}
+
+function rareSpecialShipFromReports(reports) {
+  const ships = allShipsFromReports(reports).filter(
+    (s) => Number(s.shipType || 0) > 0
+  );
+
+  const specialTypes = new Set([
+    30, 31, 32, 33, 34, 35, 36, 37,
+    50, 51, 52, 53, 54, 55, 58,
+  ]);
+
+  const typeCounts = new Map();
+
+  for (const ship of ships) {
+    const type = Number(ship.shipType || 0);
+    typeCounts.set(type, Number(typeCounts.get(type) || 0) + 1);
+  }
+
+  const specialShips = ships.filter((ship) =>
+    specialTypes.has(Number(ship.shipType || 0))
+  );
+
+  if (specialShips.length) {
+    return [...specialShips].sort((a, b) => {
+      const aCount = Number(typeCounts.get(Number(a.shipType || 0)) || 0);
+      const bCount = Number(typeCounts.get(Number(b.shipType || 0)) || 0);
+
+      if (aCount !== bCount) return aCount - bCount;
+
+      return Number(b.lengthM || 0) - Number(a.lengthM || 0);
+    })[0];
+  }
+
+  return (
+    ships.sort((a, b) => {
+      const aCount = Number(typeCounts.get(Number(a.shipType || 0)) || 0);
+      const bCount = Number(typeCounts.get(Number(b.shipType || 0)) || 0);
+
+      if (aCount !== bCount) return aCount - bCount;
+
+      return Number(b.lengthM || 0) - Number(a.lengthM || 0);
+    })[0] || null
+  );
+}
+
+function rebuildFleetTotals(fleets, reports) {
+  const nextFleets = fleets.map((fleet) => ({
+    ...fleet,
+    allTimeXp: 0,
+    dailyXp: {},
+  }));
+
+  for (const report of reports) {
+    if (!report.fleet) continue;
+
+    const fleet = nextFleets.find((f) => f.name === report.fleet);
+    if (!fleet) continue;
+
+    const xp = Number(report.xp || 0);
+
+    fleet.allTimeXp = Number(fleet.allTimeXp || 0) + xp;
+    fleet.dailyXp ||= {};
+    fleet.dailyXp[report.date] = Number(fleet.dailyXp[report.date] || 0) + xp;
+  }
+
+  return nextFleets;
+}
+
+function rebuildStationTotals(stations, reports) {
+  return stations.map((station) => {
+    const allTimeXp = reports
+      .filter((r) => r.stationId === station.stationId)
+      .reduce((sum, r) => sum + Number(r.xp || 0), 0);
+
+    return {
+      ...station,
+      allTimeXp,
+    };
+  });
 }
 
 async function loadState() {
@@ -166,6 +290,7 @@ app.post("/stations/register", requireApiKey, async (req, res) => {
     });
 
     const fleetRow = state.fleets.find((f) => f.name === fleet);
+
     if (fleetRow) {
       fleetRow.stationCount = Number(fleetRow.stationCount || 0) + 1;
     }
@@ -213,15 +338,8 @@ app.post("/reports/upload", requireApiKey, async (req, res) => {
 
   const state = await loadState();
   const key = reportKey(report);
-  const duplicate = state.reports.find((r) => r.key === key);
-
-  if (duplicate) {
-    return res.status(409).json({
-      ok: false,
-      error: "Duplicate report for this station/date",
-      existing: duplicate,
-    });
-  }
+  const duplicateIndex = state.reports.findIndex((r) => r.key === key);
+  const duplicate = duplicateIndex >= 0 ? state.reports[duplicateIndex] : null;
 
   if (report.fleet && !state.fleets.find((f) => f.name === report.fleet)) {
     return res.status(400).json({
@@ -246,17 +364,49 @@ app.post("/reports/upload", requireApiKey, async (req, res) => {
     report,
   };
 
-  state.reports.push(storedReport);
+  let duplicateAction = "created";
+
+  if (duplicate) {
+    const oldXp = Number(duplicate.xp || 0);
+    const newXp = Number(scoring.xp || 0);
+    const oldShipCount = Number(
+      duplicate.report?.uniqueType5Ships || duplicate.report?.ships?.length || 0
+    );
+    const newShipCount = Number(
+      report.uniqueType5Ships || report.ships?.length || 0
+    );
+
+    const shouldReplace =
+      oldXp <= 0 ||
+      newXp > oldXp ||
+      (newXp === oldXp && newShipCount > oldShipCount);
+
+    if (!shouldReplace) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Duplicate report for this station/date. Existing report has equal or better XP.",
+        existing: duplicate,
+        existingXp: oldXp,
+        attemptedXp: newXp,
+      });
+    }
+
+    storedReport.replaces = {
+      uploadedAt: duplicate.uploadedAt,
+      xp: oldXp,
+      uniqueShips: oldShipCount,
+    };
+
+    state.reports[duplicateIndex] = storedReport;
+    duplicateAction = "replaced";
+  } else {
+    state.reports.push(storedReport);
+  }
+
   state.globals = updateGlobalSeen(state.globals, report);
-
-  if (report.fleet) {
-    applyFleetXp(state.fleets, report.fleet, report.date, scoring.xp);
-  }
-
-  const station = state.stations.find((s) => s.stationId === report.stationId);
-  if (station) {
-    station.allTimeXp = Number(station.allTimeXp || 0) + scoring.xp;
-  }
+  state.fleets = rebuildFleetTotals(state.fleets, state.reports);
+  state.stations = rebuildStationTotals(state.stations, state.reports);
 
   await writeJson(files.reports, state.reports);
   await writeJson(files.globals, state.globals);
@@ -277,6 +427,7 @@ app.post("/reports/upload", requireApiKey, async (req, res) => {
 
   res.json({
     ok: true,
+    action: duplicateAction,
     xp: scoring.xp,
     scoring: scoring.breakdown,
     newShips: scoring.newShips,
@@ -375,16 +526,7 @@ app.get("/captains_log.py", (_req, res) => {
 app.get("/records", async (_req, res) => {
   const { reports } = await loadState();
 
-  const ships = reports.flatMap((r) =>
-    (r.report?.ships || []).map((ship) => ({
-      ...ship,
-      station: r.station,
-      stationId: r.stationId,
-      fleet: r.fleet,
-      date: r.date,
-      uploadedAt: r.uploadedAt,
-    }))
-  );
+  const ships = allShipsFromReports(reports);
 
   const withNumber = (field) =>
     ships.filter((s) => Number.isFinite(Number(s[field])) && Number(s[field]) > 0);
@@ -459,6 +601,7 @@ app.get("/leaderboard/all-time", async (_req, res) => {
 
 function buildFleetScoreboardMessage({ fleets, reports }) {
   const today = new Date().toISOString().slice(0, 10);
+  const todaysReports = reports.filter((r) => r.date === today);
 
   const fleetRows = [...fleets]
     .map((f) => ({
@@ -466,42 +609,97 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
       xp: Number(f.dailyXp?.[today] || 0),
       allTimeXp: Number(f.allTimeXp || 0),
     }))
-    .sort((a, b) => b.xp - a.xp);
+    .sort((a, b) => b.xp - a.xp || b.allTimeXp - a.allTimeXp);
 
-  const stationRows = [...reports]
-    .filter((r) => r.date === today)
+  const allTimeFleetRows = [...fleets]
+    .map((f) => ({
+      name: f.name,
+      allTimeXp: Number(f.allTimeXp || 0),
+    }))
+    .sort((a, b) => b.allTimeXp - a.allTimeXp);
+
+  const stationRows = [...todaysReports]
     .map((r) => ({
       station: r.station,
       fleet: r.fleet || "No Fleet",
       xp: Number(r.xp || 0),
+      uniqueShips: Number(r.report?.uniqueType5Ships || r.report?.ships?.length || 0),
     }))
     .sort((a, b) => b.xp - a.xp)
-    .slice(0, 5);
+    .slice(0, 3);
+
+  const topStation = stationRows[0] || null;
+  const largest = largestShipFromReports(todaysReports);
+  const rare = rareSpecialShipFromReports(todaysReports);
+  const bottomThree = getBottomThreeFleetNames(fleets);
+  const totalXpToday = fleetRows.reduce((sum, f) => sum + Number(f.xp || 0), 0);
+  const totalStationsToday = todaysReports.length;
+
+  const lines = [
+    "🏴‍☠️ **Captain’s Log — Live Fleet Wars**",
+    `📅 **${today}** • updates every 2 hours`,
+    "",
+    `⚔️ **Today’s battle:** ${formatXp(totalXpToday)} XP logged by ${totalStationsToday} station${totalStationsToday === 1 ? "" : "s"}`,
+    "",
+    "🏆 **Live fleet standings today:**",
+    ...fleetRows.map((f, i) => {
+      const crown = i === 0 && f.xp > 0 ? " 👑" : "";
+      return `${medal(i)} **${f.name}** — ${formatXp(f.xp)} XP${crown}`;
+    }),
+    "",
+    "📜 **All-time fleet XP:**",
+    allTimeFleetRows
+      .map((f, i) => `${i + 1}. ${f.name} — ${formatXp(f.allTimeXp)} XP`)
+      .join(" • "),
+    "",
+  ];
+
+  if (topStation) {
+    lines.push(
+      `⭐ **Top station today:** ${topStation.station} — ${formatXp(topStation.xp)} XP (${topStation.fleet})`,
+      "",
+      "🎖 **Top 3 stations today:**",
+      ...stationRows.map(
+        (s, i) =>
+          `${medal(i)} **${s.station}** — ${formatXp(s.xp)} XP • ${s.uniqueShips} ships • ${s.fleet}`
+      ),
+      ""
+    );
+  } else {
+    lines.push("🎖 **Top stations today:** No station logs yet.", "");
+  }
+
+  if (largest) {
+    const length = largest.lengthM ? `${largest.lengthM}m` : "unknown length";
+    lines.push(
+      `👑 **Largest vessel today:** ${safeShipName(largest)} — ${length} • ${shipTypeLabel(largest)} • ${largest.station}`
+    );
+  } else {
+    lines.push("👑 **Largest vessel today:** Waiting for a confirmed vessel length.");
+  }
+
+  if (rare) {
+    lines.push(
+      `☢️ **Rare/special vessel today:** ${safeShipName(rare)} — ${shipTypeLabel(rare)} • ${rare.station}`
+    );
+  } else {
+    lines.push("☢️ **Rare/special vessel today:** None spotted yet.");
+  }
+
+  lines.push(
+    "",
+    "🟢 **Fleets open for new stations:**",
+    ...bottomThree.map((name) => `• ${name}`),
+    "",
+    "🚀 **Join Captain’s Log**",
+    "Run this on your MastChain Raspberry Pi:",
+    "```bash",
+    INSTALL_COMMAND,
+    "```"
+  );
 
   return {
-    content: [
-      "🏆 **Captain’s Log — Fleet Scoreboard**",
-      `📅 ${today}`,
-      "",
-      "**Fleet standings today:**",
-      ...fleetRows.map((f, i) => `${i + 1}. **${f.name}** — ${f.xp} XP`),
-      "",
-      stationRows.length
-        ? `**Top stations today:**\n${stationRows
-            .map((s, i) => `${i + 1}. ${s.station} — ${s.xp} XP (${s.fleet})`)
-            .join("\n")}`
-        : "**Top stations today:**\nNo station logs yet.",
-      "",
-      `🔻 **Bottom 3 open for new stations:**\n${getBottomThreeFleetNames(fleets)
-        .map((n) => `• ${n}`)
-        .join("\n")}`,
-      "",
-      "**Want to join Captain’s Log?**",
-      "Run this on your MastChain Raspberry Pi:",
-      "```bash",
-      "curl -sSL https://captains-log-backend-production.up.railway.app/install.sh | bash",
-      "```",
-    ].join("\n"),
+    content: lines.join("\n"),
   };
 }
 
@@ -512,6 +710,7 @@ app.post("/admin/post-fleet-scoreboard", requireApiKey, async (_req, res) => {
 
   res.json({
     ok: true,
+    postedAt: new Date().toISOString(),
     discord,
   });
 });

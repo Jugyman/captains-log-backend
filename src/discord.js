@@ -11,6 +11,11 @@ function roundSignal(value) {
   return `${num.toFixed(1)} dB`;
 }
 
+function formatXp(value) {
+  const num = Number(value || 0);
+  return num.toLocaleString("en-GB");
+}
+
 function shipEmoji(ship) {
   const type = Number(ship.shipType || 0);
 
@@ -48,30 +53,14 @@ function scoreFind(ship) {
 
 function formatFind(ship, index) {
   const emoji = shipEmoji(ship);
-
   const name = ship.name || `MMSI ${ship.mmsi || ship.decodedMmsi || "unknown"}`;
-
   const type = shortShipType(ship);
-
   const flag = clean(ship.flagCountry, "Unknown");
-
   const length = ship.lengthM ? `${ship.lengthM}m` : null;
+  const draught = ship.draughtM ? `${ship.draughtM}m draught` : null;
+  const dest = ship.destination ? `→ ${ship.destination}` : null;
 
-  const draught = ship.draughtM
-    ? `${ship.draughtM}m draught`
-    : null;
-
-  const dest = ship.destination
-    ? `→ ${ship.destination}`
-    : null;
-
-  const details = [
-    length,
-    type,
-    draught,
-    flag,
-    dest,
-  ].filter(Boolean).join(" • ");
+  const details = [length, type, draught, flag, dest].filter(Boolean).join(" • ");
 
   return `${index + 1}) ${emoji} **${name}** — ${details}`;
 }
@@ -97,31 +86,18 @@ function rareShips(ships) {
   });
 }
 
-export function buildDiscordMessage({
-  report,
-  xp,
-  breakdown,
-}) {
-
-  const ships = Array.isArray(report.ships)
-    ? report.ships
-    : [];
-
+export function buildDiscordMessage({ report, xp, breakdown }) {
+  const ships = Array.isArray(report.ships) ? report.ships : [];
   const fleet = report.fleet || "No Fleet";
-
   const strongest = roundSignal(report.strongestSignal);
 
   const flags = uniqueList(
-    ships
-      .map((s) => s.flagCountry)
-      .filter((f) => f && f !== "Unknown"),
+    ships.map((s) => s.flagCountry).filter((f) => f && f !== "Unknown"),
     5
   );
 
   const destinations = uniqueList(
-    ships
-      .map((s) => s.destination)
-      .filter(Boolean),
+    ships.map((s) => s.destination).filter(Boolean),
     3
   );
 
@@ -131,14 +107,13 @@ export function buildDiscordMessage({
     .slice(0, 7);
 
   const biggest = largestShip(ships);
-
   const rares = rareShips(ships);
 
   const lines = [
     `📘 **Captain’s Log — ${report.station}**`,
     `⚓ Fleet: **${fleet}**`,
     "",
-    `🏆 XP earned: **${xp}**`,
+    `🏆 XP earned: **${formatXp(xp)}**`,
     `🚢 Unique ships: **${breakdown.uniqueNamedShips}**`,
     `📡 Strongest signal: **${strongest}**`,
   ];
@@ -172,27 +147,16 @@ export function buildDiscordMessage({
 
   if (rares.length) {
     lines.push("");
-    lines.push(
-      `☢ Rare vessel bonus: **${rares.length}** special vessels detected`
-    );
+    lines.push(`☢ Rare vessel bonus: **${rares.length}** special vessels detected`);
   }
 
   lines.push("");
 
   if (topFinds.length) {
-
     lines.push("🔥 **Top finds:**");
-
-    lines.push(
-      ...topFinds.map((ship, index) =>
-        formatFind(ship, index)
-      )
-    );
-
+    lines.push(...topFinds.map((ship, index) => formatFind(ship, index)));
   } else {
-
     lines.push("No named ships detected today.");
-
   }
 
   return {
@@ -201,7 +165,6 @@ export function buildDiscordMessage({
 }
 
 export async function postToDiscord(webhookUrl, payload) {
-
   if (!webhookUrl) {
     return {
       skipped: true,
@@ -220,9 +183,7 @@ export async function postToDiscord(webhookUrl, payload) {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
 
-    throw new Error(
-      `Discord webhook failed ${res.status}: ${text}`
-    );
+    throw new Error(`Discord webhook failed ${res.status}: ${text}`);
   }
 
   return { ok: true };
