@@ -607,18 +607,27 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
   const today = new Date().toISOString().slice(0, 10);
   const todaysReports = reports.filter((r) => r.date === today);
 
+  const todayFleetRank = [...fleets]
+    .map((f) => ({
+      name: f.name,
+      todayXp: Number(f.dailyXp?.[today] || 0),
+    }))
+    .sort((a, b) => b.todayXp - a.todayXp);
+
+  const todayRankByFleet = new Map(
+    todayFleetRank.map((f, index) => [f.name, index + 1])
+  );
+
+  const bottomThree = getBottomThreeFleetNames(fleets);
+  const joinable = new Set(bottomThree);
+
   const fleetRows = [...fleets]
     .map((f) => ({
       name: f.name,
-      xp: Number(f.dailyXp?.[today] || 0),
       allTimeXp: Number(f.allTimeXp || 0),
-    }))
-    .sort((a, b) => b.xp - a.xp || b.allTimeXp - a.allTimeXp);
-
-  const allTimeFleetRows = [...fleets]
-    .map((f) => ({
-      name: f.name,
-      allTimeXp: Number(f.allTimeXp || 0),
+      todayXp: Number(f.dailyXp?.[today] || 0),
+      todayRank: todayRankByFleet.get(f.name) || "-",
+      joinable: joinable.has(f.name),
     }))
     .sort((a, b) => b.allTimeXp - a.allTimeXp);
 
@@ -627,83 +636,53 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
       station: r.station,
       fleet: r.fleet || "No Fleet",
       xp: Number(r.xp || 0),
-      uniqueShips: Number(r.report?.uniqueType5Ships || r.report?.ships?.length || 0),
     }))
     .sort((a, b) => b.xp - a.xp)
     .slice(0, 3);
 
-  const topStation = stationRows[0] || null;
   const largest = largestShipFromReports(todaysReports);
   const rare = rareSpecialShipFromReports(todaysReports);
-  const bottomThree = getBottomThreeFleetNames(fleets);
-  const totalXpToday = fleetRows.reduce((sum, f) => sum + Number(f.xp || 0), 0);
-  const totalStationsToday = todaysReports.length;
-
-  const lines = [
-    "🏴‍☠️ **Captain’s Log — Live Fleet Wars**",
-    `📅 **${today}** • updates every 2 hours`,
-    "",
-    `⚔️ **Today’s battle:** ${formatXp(totalXpToday)} XP logged by ${totalStationsToday} station${totalStationsToday === 1 ? "" : "s"}`,
-    "",
-    "🏆 **Live fleet standings today:**",
-    ...fleetRows.map((f, i) => {
-      const crown = i === 0 && f.xp > 0 ? " 👑" : "";
-      return `${medal(i)} **${f.name}** — ${formatXp(f.xp)} XP${crown}`;
-    }),
-    "",
-    "📜 **All-time fleet XP:**",
-    allTimeFleetRows
-      .map((f, i) => `${i + 1}. ${f.name} — ${formatXp(f.allTimeXp)} XP`)
-      .join(" • "),
-    "",
-  ];
-
-  if (topStation) {
-    lines.push(
-      `⭐ **Top station today:** ${topStation.station} — ${formatXp(topStation.xp)} XP (${topStation.fleet})`,
-      "",
-      "🎖 **Top 3 stations today:**",
-      ...stationRows.map(
-        (s, i) =>
-          `${medal(i)} **${s.station}** — ${formatXp(s.xp)} XP • ${s.uniqueShips} ships • ${s.fleet}`
-      ),
-      ""
-    );
-  } else {
-    lines.push("🎖 **Top stations today:** No station logs yet.", "");
-  }
-
-  if (largest) {
-    const length = largest.lengthM ? `${largest.lengthM}m` : "unknown length";
-    lines.push(
-      `👑 **Largest vessel today:** ${safeShipName(largest)} — ${length} • ${shipTypeLabel(largest)} • ${largest.station}`
-    );
-  } else {
-    lines.push("👑 **Largest vessel today:** Waiting for a confirmed vessel length.");
-  }
-
-  if (rare) {
-    lines.push(
-      `☢️ **Rare/special vessel today:** ${safeShipName(rare)} — ${shipTypeLabel(rare)} • ${rare.station}`
-    );
-  } else {
-    lines.push("☢️ **Rare/special vessel today:** None spotted yet.");
-  }
-
-  lines.push(
-    "",
-    "🟢 **Fleets open for new stations:**",
-    ...bottomThree.map((name) => `• ${name}`),
-    "",
-    "🚀 **Join Captain’s Log**",
-    "Run this on your MastChain Raspberry Pi:",
-    "```bash",
-    INSTALL_COMMAND,
-    "```"
-  );
 
   return {
-    content: lines.join("\n"),
+    content: [
+      "🏴‍☠️ **Fleet Wars Live**",
+      `⚔️ ${today}`,
+      "",
+      "🏆 **Fleet standings — all time**",
+      "_Today’s score and rank shown in brackets. 🟢 = open to new stations._",
+      ...fleetRows.map((f, i) => {
+        const icon =
+          i === 0 ? "👑" :
+          i === 1 ? "🥈" :
+          i === 2 ? "🥉" :
+          "•";
+
+        const open = f.joinable ? " 🟢 Joinable" : "";
+
+        return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP (${formatXp(f.todayXp)} today, #${f.todayRank})${open}`;
+      }),
+      "",
+      stationRows.length
+        ? `🎖 **Top 3 today:**\n${stationRows
+            .map(
+              (s, i) =>
+                `${i + 1}) ${s.station} — ${formatXp(s.xp)} XP • ${s.fleet}`
+            )
+            .join("\n")}`
+        : "🎖 **Top 3 today:** No station logs yet.",
+      "",
+      largest
+        ? `👑 **Largest:** ${safeShipName(largest)} (${largest.lengthM}m)`
+        : null,
+      rare
+        ? `☢️ **Rare:** ${safeShipName(rare)} — ${shipTypeLabel(rare)}`
+        : null,
+      "",
+      "🚀 Join Captain’s Log:",
+      "curl -O https://captains-log-backend-production.up.railway.app/install.sh",
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
 }
 
