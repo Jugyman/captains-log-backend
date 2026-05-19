@@ -648,8 +648,11 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
       "🏴‍☠️ **Fleet Wars Live**",
       `⚔️ ${today}`,
       "",
+
       "🏆 **Fleet standings — all time**",
-      "_Today’s score and rank shown in brackets. 🟢 = open to new stations._",
+      "_Today’s XP/rank shown in brackets. 🟢 = open for new stations._",
+      "",
+
       ...fleetRows.map((f, i) => {
         const icon =
           i === 0 ? "👑" :
@@ -657,29 +660,41 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
           i === 2 ? "🥉" :
           "•";
 
-        const open = f.joinable ? " 🟢 Joinable" : "";
+        const open = f.joinable ? " 🟢" : "";
 
         return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP (${formatXp(f.todayXp)} today, #${f.todayRank})${open}`;
       }),
+
       "",
+
       stationRows.length
-        ? `🎖 **Top 3 today:**\n${stationRows
-            .map(
+        ? [
+            "🎖 **Top 3 today:**",
+            ...stationRows.map(
               (s, i) =>
                 `${i + 1}) ${s.station} — ${formatXp(s.xp)} XP • ${s.fleet}`
-            )
-            .join("\n")}`
+            ),
+          ].join("\n")
         : "🎖 **Top 3 today:** No station logs yet.",
+
       "",
+
       largest
         ? `👑 **Largest:** ${safeShipName(largest)} (${largest.lengthM}m)`
-        : null,
+        : "👑 **Largest:** Waiting for vessel length.",
+
       rare
         ? `☢️ **Rare:** ${safeShipName(rare)} — ${shipTypeLabel(rare)}`
-        : null,
+        : "☢️ **Rare:** None spotted yet.",
+
       "",
-      "🚀 Join Captain’s Log:",
+
+      "🚀 **Join Captain’s Log:**",
+      "```bash",
       "curl -O https://captains-log-backend-production.up.railway.app/install.sh",
+      "chmod +x install.sh",
+      "./install.sh",
+      "```",
     ]
       .filter(Boolean)
       .join("\n"),
