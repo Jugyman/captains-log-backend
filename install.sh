@@ -62,7 +62,6 @@ PY
 }
 
 choose_fleet() {
-
   mapfile -t fleets < <(fetch_fleet_options || true)
 
   if [ "${#fleets[@]}" -eq 0 ]; then
@@ -78,7 +77,6 @@ choose_fleet() {
   echo "" >&2
 
   local i=1
-
   for f in "${fleets[@]}"; do
     echo "$i) $f" >&2
     i=$((i+1))
@@ -87,40 +85,45 @@ choose_fleet() {
   echo "" >&2
 
   while true; do
-
     read -r -p "Choose fleet number: " choice >&2
 
     if [[ "$choice" =~ ^[0-9]+$ ]] &&
        [ "$choice" -ge 1 ] &&
        [ "$choice" -le "${#fleets[@]}" ]; then
-
       printf '%s' "${fleets[$((choice-1))]}"
       return
     fi
 
     echo "Invalid choice." >&2
-
   done
 }
 
 auto_detect_source() {
-
   if command -v docker >/dev/null 2>&1 &&
      docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'mastchain-ais'; then
-    echo "docker"
+    echo "docker:mastchain-ais"
     return
   fi
 
   if systemctl list-unit-files 2>/dev/null | grep -q '^mastradar.service'; then
-    echo "journal"
+    echo "journal:mastradar.service"
     return
   fi
 
-  echo "docker"
+  if systemctl list-unit-files 2>/dev/null | grep -q '^ais-catcher.service'; then
+    echo "journal:ais-catcher.service"
+    return
+  fi
+
+  if systemctl list-units --type=service 2>/dev/null | grep -q 'ais-catcher.service'; then
+    echo "journal:ais-catcher.service"
+    return
+  fi
+
+  echo "docker:mastchain-ais"
 }
 
 main() {
-
   need_cmd curl
   need_cmd python3
 
@@ -144,37 +147,46 @@ main() {
     read -r -p "Choose 1 or 2: " time_choice
 
     case "$time_choice" in
-
       1)
         DAILY_TIME="$(date +%H:%M)"
         break
         ;;
 
       2)
-
         while true; do
-
           read -r -p "Enter daily time (HH:MM): " DAILY_TIME
-
           [[ "$DAILY_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && break
-
           echo "Use HH:MM format"
         done
-
         break
         ;;
 
       *)
         echo "Invalid choice."
         ;;
-
     esac
   done
 
-  SOURCE="$(auto_detect_source)"
+  DETECTED_SOURCE="$(auto_detect_source)"
+
+  if [[ "$DETECTED_SOURCE" == journal:* ]]; then
+    SOURCE="journal"
+    JOURNAL_SERVICE="${DETECTED_SOURCE#journal:}"
+    DOCKER_CONTAINER="mastchain-ais"
+  else
+    SOURCE="docker"
+    DOCKER_CONTAINER="${DETECTED_SOURCE#docker:}"
+    JOURNAL_SERVICE="mastradar.service"
+  fi
 
   echo ""
   echo "Detected source: $SOURCE"
+
+  if [ "$SOURCE" = "journal" ]; then
+    echo "Detected service: $JOURNAL_SERVICE"
+  else
+    echo "Detected container: $DOCKER_CONTAINER"
+  fi
 
   sudo mkdir -p "$APP_DIR"
   sudo mkdir -p "$CONFIG_DIR"
@@ -207,10 +219,10 @@ CAPTAINS_LOG_FLEET="$(quote_env "$FLEET")"
 
 CAPTAINS_LOG_SOURCE="$SOURCE"
 
-CAPTAINS_LOG_CONTAINER="mastchain-ais"
-CAPTAINS_LOG_SERVICE="mastradar.service"
+CAPTAINS_LOG_CONTAINER="$DOCKER_CONTAINER"
+CAPTAINS_LOG_SERVICE="$JOURNAL_SERVICE"
 
-CAPTAINS_LOG_TAIL="5000"
+CAPTAINS_LOG_TAIL="50000"
 CAPTAINS_LOG_SINCE="24 hours ago"
 EOF
 
@@ -237,21 +249,17 @@ ARGS=(
 )
 
 if [ "\$CAPTAINS_LOG_SOURCE" = "journal" ]; then
-
   ARGS+=(
     --source journal
     --service "\$CAPTAINS_LOG_SERVICE"
     --since "\$CAPTAINS_LOG_SINCE"
   )
-
 else
-
   ARGS+=(
     --source docker
     --container "\$CAPTAINS_LOG_CONTAINER"
     --tail "\$CAPTAINS_LOG_TAIL"
   )
-
 fi
 
 exec "\${ARGS[@]}"
@@ -290,16 +298,21 @@ WantedBy=timers.target
 EOF
 
   sudo systemctl daemon-reload
-
   sudo systemctl enable --now captains-log-upload.timer
 
   echo ""
   echo "✅ Captain's Log installed"
   echo ""
-
   echo "Station: $STATION_NAME"
   echo "Fleet: $FLEET"
   echo "Source: $SOURCE"
+
+  if [ "$SOURCE" = "journal" ]; then
+    echo "Service: $JOURNAL_SERVICE"
+  else
+    echo "Container: $DOCKER_CONTAINER"
+  fi
+
   echo "Daily upload time: $DAILY_TIME"
 
   echo ""
@@ -307,11 +320,9 @@ EOF
   systemctl list-timers captains-log-upload.timer --no-pager || true
 
   echo ""
-
   read -r -p "Run a test upload now? [Y/n]: " run_now
 
   if [[ ! "$run_now" =~ ^[Nn]$ ]]; then
-
     sudo systemctl start captains-log-upload.service
 
     echo ""
