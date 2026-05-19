@@ -651,9 +651,7 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
       "",
 
       "🏆 **Fleet standings — all time**",
-      "_Today’s XP/rank shown in brackets. 🟢 = open for new stations._",
-
-      "",
+      "_(today XP + today rank in brackets • 🟢 joinable)_",
 
       ...fleetRows.map((f, i) => {
         const icon =
@@ -664,18 +662,17 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
 
         const open = f.joinable ? " 🟢" : "";
 
-        return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP\n   (${formatXp(f.todayXp)} today • #${f.todayRank})${open}`;
+        return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP (${formatXp(f.todayXp)} today • #${f.todayRank})${open}`;
       }),
 
       "",
 
       "🎖 **Top 3 today**",
-
       ...(
         stationRows.length
           ? stationRows.map(
               (s, i) =>
-                `${i + 1}) ${s.station}\n   ${formatXp(s.xp)} XP • ${s.fleet}`
+                `${i + 1}) ${s.station} — ${formatXp(s.xp)} XP • ${s.fleet}`
             )
           : ["No station logs yet."]
       ),
@@ -683,14 +680,12 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
       "",
 
       largest
-        ? `👑 **Largest Vessel**\n${safeShipName(largest)} (${largest.lengthM}m)`
-        : "👑 **Largest Vessel**\nWaiting for vessel length.",
-
-      "",
+        ? `👑 **Largest:** ${safeShipName(largest)} (${largest.lengthM}m)`
+        : "👑 **Largest:** Waiting for vessel length.",
 
       rare
-        ? `☢️ **Rare Vessel**\n${safeShipName(rare)} — ${shipTypeLabel(rare)}`
-        : "☢️ **Rare Vessel**\nNone spotted yet.",
+        ? `☢️ **Rare:** ${safeShipName(rare)} — ${shipTypeLabel(rare)}`
+        : "☢️ **Rare:** None spotted yet.",
 
       "",
 
