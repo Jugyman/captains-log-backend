@@ -28,8 +28,12 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || "";
 const POST_TO_DISCORD =
   String(process.env.POST_TO_DISCORD || "true").toLowerCase() === "true";
 
-const INSTALL_COMMAND =
-  "curl -sSL https://captains-log-backend-production.up.railway.app/install.sh | bash";
+const INSTALL_COMMAND = [
+  "curl -O https://captains-log-backend-production.up.railway.app/install.sh",
+  "chmod +x install.sh",
+  "./install.sh",
+].join("\n");
+ 
 
 const files = dataFiles(DATA_DIR);
 const app = express();
