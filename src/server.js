@@ -647,10 +647,12 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
     content: [
       "🏴‍☠️ **Fleet Wars Live**",
       `⚔️ ${today}`,
+
       "",
 
       "🏆 **Fleet standings — all time**",
       "_Today’s XP/rank shown in brackets. 🟢 = open for new stations._",
+
       "",
 
       ...fleetRows.map((f, i) => {
@@ -662,42 +664,44 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
 
         const open = f.joinable ? " 🟢" : "";
 
-        return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP (${formatXp(f.todayXp)} today, #${f.todayRank})${open}`;
+        return `${icon} **${f.name}** — ${formatXp(f.allTimeXp)} XP\n   (${formatXp(f.todayXp)} today • #${f.todayRank})${open}`;
       }),
 
       "",
 
-      stationRows.length
-        ? [
-            "🎖 **Top 3 today:**",
-            ...stationRows.map(
+      "🎖 **Top 3 today**",
+
+      ...(
+        stationRows.length
+          ? stationRows.map(
               (s, i) =>
-                `${i + 1}) ${s.station} — ${formatXp(s.xp)} XP • ${s.fleet}`
-            ),
-          ].join("\n")
-        : "🎖 **Top 3 today:** No station logs yet.",
+                `${i + 1}) ${s.station}\n   ${formatXp(s.xp)} XP • ${s.fleet}`
+            )
+          : ["No station logs yet."]
+      ),
 
       "",
 
       largest
-        ? `👑 **Largest:** ${safeShipName(largest)} (${largest.lengthM}m)`
-        : "👑 **Largest:** Waiting for vessel length.",
-
-      rare
-        ? `☢️ **Rare:** ${safeShipName(rare)} — ${shipTypeLabel(rare)}`
-        : "☢️ **Rare:** None spotted yet.",
+        ? `👑 **Largest Vessel**\n${safeShipName(largest)} (${largest.lengthM}m)`
+        : "👑 **Largest Vessel**\nWaiting for vessel length.",
 
       "",
 
-      "🚀 **Join Captain’s Log:**",
+      rare
+        ? `☢️ **Rare Vessel**\n${safeShipName(rare)} — ${shipTypeLabel(rare)}`
+        : "☢️ **Rare Vessel**\nNone spotted yet.",
+
+      "",
+
+      "🚀 **Join Captain’s Log**",
+
       "```bash",
       "curl -O https://captains-log-backend-production.up.railway.app/install.sh",
       "chmod +x install.sh",
       "./install.sh",
       "```",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    ].join("\n"),
   };
 }
 
