@@ -527,6 +527,10 @@ app.get("/captains_log.py", (_req, res) => {
   fs.createReadStream(scriptPath).pipe(res);
 });
 
+app.get("/captains-log-promo.png", (_req, res) => {
+  res.sendFile(path.join(process.cwd(), "captains-log-promo.png"));
+});
+
 app.get("/records", async (_req, res) => {
   const { reports } = await loadState();
 
@@ -699,6 +703,39 @@ function buildFleetScoreboardMessage({ fleets, reports }) {
     ].join("\n"),
   };
 }
+
+app.post("/admin/post-promo", requireApiKey, async (_req, res) => {
+
+  const payload = {
+    content: [
+      "🏴‍☠️ **Captain’s Log — The AIS Fleet Game on MastChain**",
+      "",
+      "Real AIS. Real ships. Real fleet competition.",
+      "",
+      "🚀 Install your station now:",
+      "```bash",
+      "curl -O https://captains-log-backend-production.up.railway.app/install.sh",
+      "chmod +x install.sh",
+      "./install.sh",
+      "```",
+    ].join("\n"),
+
+    embeds: [
+      {
+        image: {
+          url: "https://captains-log-backend-production.up.railway.app/captains-log-promo.png"
+        }
+      }
+    ]
+  };
+
+  const discord = await postToDiscord(DISCORD_WEBHOOK_URL, payload);
+
+  res.json({
+    ok: true,
+    discord,
+  });
+});
 
 app.post("/admin/post-fleet-scoreboard", requireApiKey, async (_req, res) => {
   const { fleets, reports } = await loadState();
