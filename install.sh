@@ -66,29 +66,29 @@ choose_fleet() {
   mapfile -t fleets < <(fetch_fleet_options || true)
 
   if [ "${#fleets[@]}" -eq 0 ]; then
-    echo ""
-    echo "Could not fetch fleet list from backend."
-    echo ""
+    echo "" >&2
+    echo "Could not fetch fleet list from backend." >&2
+    echo "" >&2
     prompt_required "Fleet name"
     return
   fi
 
-  echo ""
-  echo "🏴‍☠️ Available Fleets"
-  echo ""
+  echo "" >&2
+  echo "🏴‍☠️ Available Fleets" >&2
+  echo "" >&2
 
   local i=1
 
   for f in "${fleets[@]}"; do
-    echo "$i) $f"
+    echo "$i) $f" >&2
     i=$((i+1))
   done
 
-  echo ""
+  echo "" >&2
 
   while true; do
 
-    read -r -p "Choose fleet number: " choice
+    read -r -p "Choose fleet number: " choice >&2
 
     if [[ "$choice" =~ ^[0-9]+$ ]] &&
        [ "$choice" -ge 1 ] &&
@@ -98,7 +98,7 @@ choose_fleet() {
       return
     fi
 
-    echo "Invalid choice."
+    echo "Invalid choice." >&2
 
   done
 }
