@@ -62,6 +62,7 @@ PY
 }
 
 choose_fleet() {
+
   mapfile -t fleets < <(fetch_fleet_options || true)
 
   if [ "${#fleets[@]}" -eq 0 ]; then
@@ -77,14 +78,16 @@ choose_fleet() {
   echo ""
 
   local i=1
+
   for f in "${fleets[@]}"; do
-    echo "  $i) $f"
+    echo "$i) $f"
     i=$((i+1))
   done
 
   echo ""
 
   while true; do
+
     read -r -p "Choose fleet number: " choice
 
     if [[ "$choice" =~ ^[0-9]+$ ]] &&
@@ -96,6 +99,7 @@ choose_fleet() {
     fi
 
     echo "Invalid choice."
+
   done
 }
 
